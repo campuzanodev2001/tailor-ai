@@ -77,14 +77,14 @@ export default function ProfilePage() {
 
       // Merge skill arrays — add only skills not already present
       if (Array.isArray(parsed.hardSkills) && parsed.hardSkills.length) {
-        const existing = new Set(toArr(profile?.hardSkills).map((s) => s.toLowerCase()));
+        const existing = new Set(toArr(profile?.hardSkills ?? []).map((s) => s.toLowerCase()));
         const incoming = (parsed.hardSkills as string[]).filter((s) => !existing.has(s.toLowerCase()));
-        if (incoming.length) mapped.hardSkills = [...toArr(profile?.hardSkills), ...incoming];
+        if (incoming.length) mapped.hardSkills = [...toArr(profile?.hardSkills ?? []), ...incoming];
       }
       if (Array.isArray(parsed.softSkills) && parsed.softSkills.length) {
-        const existing = new Set(toArr(profile?.softSkills).map((s) => s.toLowerCase()));
+        const existing = new Set(toArr(profile?.softSkills ?? []).map((s) => s.toLowerCase()));
         const incoming = (parsed.softSkills as string[]).filter((s) => !existing.has(s.toLowerCase()));
-        if (incoming.length) mapped.softSkills = [...toArr(profile?.softSkills), ...incoming];
+        if (incoming.length) mapped.softSkills = [...toArr(profile?.softSkills ?? []), ...incoming];
       }
 
       // Merge languages — add only languages whose name isn't already listed
@@ -102,7 +102,7 @@ export default function ProfilePage() {
       // Append experience entries not already present (matched by company + role)
       if (Array.isArray(parsed.experience) && parsed.experience.length) {
         const existingKeys = new Set(
-          toArr(profile?.experience).map((e) => `${e.company}|${e.role}`.toLowerCase())
+          toArr(profile?.experience ?? []).map((e) => `${e.company}|${e.role}`.toLowerCase())
         );
         const incoming = (parsed.experience as {
           company: string; role: string; startDate: string; endDate: string;
@@ -120,7 +120,7 @@ export default function ProfilePage() {
             techStack:    Array.isArray(exp.techStack)    ? exp.techStack    : [],
           })) as Experience[];
         if (incoming.length)
-          mapped.experience = [...toArr(profile?.experience), ...incoming];
+          mapped.experience = [...toArr(profile?.experience ?? []), ...incoming];
       }
 
       // Append education not already present (matched by institution + degree)
@@ -221,8 +221,8 @@ export default function ProfilePage() {
       const currentSummary = summaryRef.current?.value ?? profile?.shortDescription ?? "";
       const context = [
         profile?.title && `Title: ${profile.title}`,
-        toArr(profile?.hardSkills).length && `Skills: ${toArr(profile.hardSkills).join(", ")}`,
-        toArr(profile?.experience).length && `Experience: ${toArr(profile.experience).map((e) => `${e.role} at ${e.company}`).join("; ")}`,
+        toArr(profile?.hardSkills).length && `Skills: ${toArr(profile?.hardSkills).join(", ")}`,
+        toArr(profile?.experience).length && `Experience: ${toArr(profile?.experience).map((e) => `${e.role} at ${e.company}`).join("; ")}`,
         currentSummary && `Current summary: ${currentSummary}`,
       ].filter(Boolean).join("\n");
 
