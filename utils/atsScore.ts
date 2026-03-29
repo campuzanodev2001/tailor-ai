@@ -19,6 +19,7 @@ export function calculateATSScore(cv: CVData, jd: JDAnalysis): ATSResult {
   const keywords = [
     ...jd.atsKeywords,
     ...jd.requiredSkills,
+    ...jd.niceToHave,
   ].map((k) => k.toLowerCase());
 
   const unique    = [...new Set(keywords)];

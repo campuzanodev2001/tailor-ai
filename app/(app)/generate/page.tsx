@@ -18,6 +18,7 @@ export default function GeneratePage() {
     setAnalysis,
     loading: analyzing,
     error: analysisError,
+    modelUsed: analyzeModelUsed,
     analyze,
   } = useJDAnalysis();
 
@@ -30,6 +31,8 @@ export default function GeneratePage() {
   const [modelUsed, setModelUsed] = useState<string | null>(null);
   const [manualEdit, setManualEdit] = useState(false);
   const [mobileTab, setMobileTab] = useState<"input" | "preview">("input");
+  const [justMoved, setJustMoved] = useState<Set<string>>(new Set());
+  const [pasted, setPasted] = useState(false);
   const analysisRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to analysis results on mobile when analysis is ready
@@ -65,20 +68,49 @@ export default function GeneratePage() {
       ? Math.min(99, Math.round(40 + (newMatched.length / total) * 60))
       : fit.score;
     const newLabel =
-      newScore >= 75 ? "Excelente match" :
-      newScore >= 50 ? "Buen candidato"  :
-      newScore >= 25 ? "Match parcial"   : "Débil match";
+      newScore >= 75 ? "Excellent match" :
+      newScore >= 50 ? "Good candidate"  :
+      newScore >= 25 ? "Partial match"   : "Weak match";
 
     setAnalysis({
       ...analysis,
       profileFit: { ...fit, score: newScore, label: newLabel, matchedSkills: newMatched, missingSkills: newMissing },
     });
+    setJustMoved((prev) => new Set(prev).add(skill));
+    setTimeout(() => setJustMoved((prev) => { const n = new Set(prev); n.delete(skill); return n; }), 900);
+  }
+
+  function removeSkillFromProfile(skill: string) {
+    const current = profile?.hardSkills ?? [];
+    updateProfile({ hardSkills: current.filter((s) => s !== skill) });
+
+    if (!analysis?.profileFit) return;
+    const fit = analysis.profileFit;
+    const newMatched  = fit.matchedSkills.filter((s) => s !== skill);
+    const newMissing  = [...fit.missingSkills, skill];
+    const total       = newMissing.length + newMatched.length;
+    const newScore    = total > 0
+      ? Math.min(99, Math.round(40 + (newMatched.length / total) * 60))
+      : fit.score;
+    const newLabel =
+      newScore >= 75 ? "Excellent match" :
+      newScore >= 50 ? "Good candidate"  :
+      newScore >= 25 ? "Partial match"   : "Weak match";
+
+    setAnalysis({
+      ...analysis,
+      profileFit: { ...fit, score: newScore, label: newLabel, matchedSkills: newMatched, missingSkills: newMissing },
+    });
+    setJustMoved((prev) => new Set(prev).add(skill));
+    setTimeout(() => setJustMoved((prev) => { const n = new Set(prev); n.delete(skill); return n; }), 900);
   }
 
   async function handleAnalyze() {
     if (!jd.trim()) return;
     setCvData(null);
     setAtsScore(null);
+    setAnalysis(null);
+    setModelUsed(null);
     await analyze(jd, langMode);
   }
 
@@ -145,6 +177,17 @@ export default function GeneratePage() {
     }
   }
 
+  const activeModel = modelUsed ?? analyzeModelUsed;
+
+  function formatModelName(model: string) {
+    return model
+      .replace(/^gemini-/, "Gemini ")
+      .replace(/-preview$/, "")
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+
   return (
     <div className="flex flex-col md:flex-row md:h-screen overflow-hidden bg-background">
 
@@ -174,9 +217,34 @@ export default function GeneratePage() {
       {/* ── LEFT PANEL (45%) ── */}
       <section className={`w-full md:w-[45%] md:h-full flex flex-col bg-surface border-r border-outline-variant/5 overflow-y-auto ${mobileTab === "preview" ? "hidden md:flex" : "flex"}`}>
         <header className="p-4 sm:p-8 pb-0">
-          <h2 className="text-2xl sm:text-3xl font-headline font-extrabold tracking-tight text-white mb-2">
-            Tailor Content
-          </h2>
+          <div className="flex items-center gap-3 mb-2">
+            <h2 className="text-2xl sm:text-3xl font-headline font-extrabold tracking-tight text-white">
+              Tailor Content
+            </h2>
+            {(analyzing || generating) ? (
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high border border-outline-variant/20 text-[10px] font-bold text-outline animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
+                thinking...
+              </span>
+            ) : activeModel ? (
+              <div className="relative group/model">
+                <span
+                  key={activeModel}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high border border-outline-variant/20 text-[10px] font-bold text-primary cursor-default select-none animate-in fade-in duration-300"
+                >
+                  <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>
+                    auto_awesome
+                  </span>
+                  {formatModelName(activeModel)}
+                </span>
+                <div className="absolute left-0 top-full mt-1.5 z-50 w-64 hidden group-hover/model:block">
+                  <div className="bg-surface-container-highest border border-outline-variant/20 rounded-xl p-3 shadow-xl text-xs text-on-surface-variant leading-relaxed">
+                    Tailor AI always tries to use the most capable Gemini model available. If it hits a rate limit, it automatically falls back to the next best option.
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
           <p className="text-on-surface-variant text-sm max-w-sm">
             Paste the job description and let the AI extract the critical
             requirements for your CV.
@@ -205,9 +273,34 @@ export default function GeneratePage() {
                     </button>
                   ))}
                 </div>
-                <span className="material-symbols-outlined text-outline text-sm">
-                  expand_content
-                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={async () => {
+                      setJd("");
+                      const text = await navigator.clipboard.readText();
+                      if (!text) return;
+                      setJd(text);
+                      setPasted(true);
+                      setTimeout(() => setPasted(false), 1500);
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 text-outline hover:text-white transition-colors rounded-lg hover:bg-surface-container-high text-[10px] font-label"
+                    aria-label="Paste from clipboard"
+                  >
+                    <span className={`material-symbols-outlined text-sm transition-colors ${pasted ? "text-tertiary" : ""}`}>
+                      {pasted ? "check" : "content_paste"}
+                    </span>
+                    <span className={`transition-colors ${pasted ? "text-tertiary" : ""}`}>
+                      {pasted ? "Pasted" : "Paste"}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setJd("")}
+                    className="p-1 text-outline hover:text-white transition-colors"
+                    aria-label="Clear input"
+                  >
+                    <span className="material-symbols-outlined text-sm">close</span>
+                  </button>
+                </div>
               </div>
               <textarea
                 value={jd}
@@ -256,10 +349,10 @@ export default function GeneratePage() {
 
               <div className="bg-surface-container rounded-2xl p-6 border border-outline-variant/10 space-y-6">
                 <div className="flex flex-wrap gap-2">
-                  <span className="px-3 py-1.5 bg-secondary-container text-on-secondary-container rounded-full text-xs font-bold">
+                  <span className="px-3 py-1.5 bg-secondary-container text-on-secondary-container rounded-full text-xs font-bold inline-flex items-center justify-center">
                     {analysis.role}
                   </span>
-                  <span className="px-3 py-1.5 bg-surface-container-high text-primary rounded-full text-xs font-bold">
+                  <span className="px-3 py-1.5 bg-surface-container-high text-primary rounded-full text-xs font-bold inline-flex items-center justify-center">
                     {analysis.seniority}
                   </span>
                   {analysis.company && (
@@ -348,12 +441,36 @@ export default function GeneratePage() {
 
                     {fit.matchedSkills.length > 0 && (
                       <div>
-                        <p className="text-[10px] font-label text-outline mb-2 uppercase tracking-widest">Tenés</p>
+                        <p className="text-[10px] font-label text-outline mb-2 uppercase tracking-widest">You have</p>
                         <div className="flex flex-wrap gap-1.5">
-                          {fit.matchedSkills.slice(0, 6).map((s) => (
-                            <span key={s} className="px-2 py-0.5 bg-tertiary/15 text-tertiary rounded text-[10px] font-medium">
-                              {s}
-                            </span>
+                          {fit.matchedSkills.map((s) => (
+                            <div key={s} className="relative group/chip">
+                              <button
+                                onClick={() => removeSkillFromProfile(s)}
+                                className={`px-2 py-0.5 rounded text-[10px] font-medium border active:scale-95 transition-all flex items-center gap-1 cursor-pointer
+                                  ${justMoved.has(s)
+                                    ? "bg-tertiary/40 text-tertiary border-tertiary/60 scale-105"
+                                    : "bg-tertiary/15 text-tertiary border-tertiary/20 hover:bg-error/15 hover:text-error hover:border-error/30"
+                                  }`}
+                              >
+                                {s}
+                                <span className="material-symbols-outlined text-[10px] opacity-60">remove_circle</span>
+                              </button>
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover/chip:opacity-100 scale-95 group-hover/chip:scale-100 transition-all duration-150 pointer-events-none z-20">
+                                <div className="bg-[#1a1a2e] border border-error/20 rounded-xl px-3 py-2 shadow-2xl shadow-black/40 flex items-center gap-2 whitespace-nowrap">
+                                  <div className="w-5 h-5 rounded-full bg-error/20 flex items-center justify-center shrink-0">
+                                    <span className="material-symbols-outlined text-error text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>remove</span>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] font-black text-white tracking-wide">Click to remove from profile</p>
+                                    <p className="text-[9px] text-error/70 font-medium">Updates your score instantly</p>
+                                  </div>
+                                </div>
+                                <div className="flex justify-center -mt-px">
+                                  <div className="w-2.5 h-2.5 bg-[#1a1a2e] border-r border-b border-error/20 rotate-45" />
+                                </div>
+                              </div>
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -361,13 +478,17 @@ export default function GeneratePage() {
 
                     {fit.missingSkills.length > 0 && (
                       <div>
-                        <p className="text-[10px] font-label text-outline mb-2 uppercase tracking-widest">Te falta</p>
+                        <p className="text-[10px] font-label text-outline mb-2 uppercase tracking-widest">Missing</p>
                         <div className="flex flex-wrap gap-1.5">
-                          {fit.missingSkills.slice(0, 6).map((s) => (
+                          {fit.missingSkills.map((s) => (
                             <div key={s} className="relative group/chip">
                               <button
                                 onClick={() => addSkillToProfile(s)}
-                                className="px-2.5 py-1 bg-error/10 text-error rounded-lg text-[10px] font-semibold border border-error/20 hover:bg-error/20 hover:border-error/40 active:scale-95 transition-all cursor-pointer flex items-center gap-1"
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold border active:scale-95 transition-all cursor-pointer flex items-center gap-1
+                                  ${justMoved.has(s)
+                                    ? "bg-error/30 text-error border-error/60 scale-105"
+                                    : "bg-error/10 text-error border-error/20 hover:bg-error/20 hover:border-error/40"
+                                  }`}
                               >
                                 <span className="material-symbols-outlined text-[10px] opacity-60">add_circle</span>
                                 {s}
@@ -426,15 +547,11 @@ export default function GeneratePage() {
                 <p className="text-center text-xs text-outline mt-2">
                   {credits} credit{credits !== 1 ? "s" : ""} remaining
                 </p>
-                {modelUsed && modelUsed !== "gemini-3-flash-preview" && (
-                  <div className="mt-3 flex items-start gap-2 px-3 py-2 bg-secondary/10 border border-secondary/20 rounded-lg">
-                    <span className="material-symbols-outlined text-secondary text-base mt-0.5">warning</span>
+                {modelUsed && modelUsed !== "gemini-3.1-pro-preview" && (
+                  <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-secondary/10 border border-secondary/20 rounded-lg">
+                    <span className="material-symbols-outlined text-secondary text-base shrink-0">swap_horiz</span>
                     <p className="text-[11px] text-secondary leading-snug">
-                      Gemini 3 Flash alcanzó la cuota diaria. Usando{" "}
-                      <span className="font-bold">
-                        {modelUsed === "gemini-2.5-flash" ? "Gemini 2.5 Flash" : "Gemini 2.0 Flash"}
-                      </span>{" "}
-                      como reemplazo.
+                      Using <span className="font-bold">{formatModelName(modelUsed)}</span> — best available model right now.
                     </p>
                   </div>
                 )}
@@ -460,28 +577,28 @@ export default function GeneratePage() {
               {generating && (
                 <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20">
                   <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                  <span className="text-[10px] font-label text-primary">GENERANDO</span>
+                  <span className="text-[10px] font-label text-primary">GENERATING</span>
                 </div>
               )}
               {modelUsed && !generating && !analyzing && (
                 <div
                   className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-mono font-bold ${
-                    modelUsed === "gemini-3-flash-preview"
+                    modelUsed === "gemini-3.1-pro-preview"
                       ? "bg-tertiary/10 border-tertiary/20 text-tertiary"
                       : "bg-secondary/10 border-secondary/20 text-secondary"
                   }`}
                   title={modelUsed}
                 >
                   <span className="material-symbols-outlined text-[12px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                    {modelUsed === "gemini-3-flash-preview" ? "bolt" : "swap_horiz"}
+                    {modelUsed === "gemini-3.1-pro-preview" ? "bolt" : "swap_horiz"}
                   </span>
-                  {modelUsed === "gemini-3-flash-preview" ? "Gemini 3 Flash" : modelUsed === "gemini-2.5-flash" ? "Gemini 2.5 Flash" : "Gemini 2.0 Flash"}
+                  {formatModelName(modelUsed)}
                 </div>
               )}
               {analyzing && !generating && (
                 <div className="flex items-center gap-2 px-3 py-1 bg-secondary/10 rounded-full border border-secondary/20">
                   <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
-                  <span className="text-[10px] font-label text-secondary">ANALIZANDO</span>
+                  <span className="text-[10px] font-label text-secondary">ANALYZING</span>
                 </div>
               )}
               {cvData && !generating && !analyzing && (
@@ -550,7 +667,7 @@ export default function GeneratePage() {
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-[shimmer_1.8s_infinite] pointer-events-none" />
               </div>
               <p className="text-center text-xs text-outline mt-4 animate-pulse">
-                La IA está escribiendo tu CV personalizado…
+                AI is writing your tailored CV…
               </p>
             </div>
           ) : analyzing && !cvData ? (
@@ -567,8 +684,8 @@ export default function GeneratePage() {
                   ))}
                 </div>
                 <div className="text-center space-y-1">
-                  <p className="text-sm font-bold text-white">Analizando requisitos</p>
-                  <p className="text-xs text-on-surface-variant">Extrayendo skills, keywords y seniority…</p>
+                  <p className="text-sm font-bold text-white">Analyzing requirements</p>
+                  <p className="text-xs text-on-surface-variant">Extracting skills, keywords and seniority…</p>
                 </div>
               </div>
             </div>

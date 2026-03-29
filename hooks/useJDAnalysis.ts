@@ -5,9 +5,10 @@ import { JDAnalysis } from "@/types";
 import { auth } from "@/lib/firebase";
 
 export function useJDAnalysis() {
-  const [analysis, setAnalysis] = useState<JDAnalysis | null>(null);
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState<string | null>(null);
+  const [analysis,   setAnalysis]   = useState<JDAnalysis | null>(null);
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState<string | null>(null);
+  const [modelUsed,  setModelUsed]  = useState<string | null>(null);
 
   async function analyze(jobDescription: string, lang: "auto" | "es" | "en" = "auto") {
     setLoading(true);
@@ -29,9 +30,10 @@ export function useJDAnalysis() {
         throw new Error(msg ?? "Analysis failed");
       }
 
-      const data: JDAnalysis = await res.json();
-      setAnalysis(data);
-      return data;
+      const { modelUsed: mu, ...data } = await res.json();
+      setAnalysis(data as JDAnalysis);
+      setModelUsed(mu ?? null);
+      return data as JDAnalysis;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       setError(msg);
@@ -44,7 +46,8 @@ export function useJDAnalysis() {
   function reset() {
     setAnalysis(null);
     setError(null);
+    setModelUsed(null);
   }
 
-  return { analysis, setAnalysis, loading, error, analyze, reset };
+  return { analysis, setAnalysis, loading, error, modelUsed, analyze, reset };
 }

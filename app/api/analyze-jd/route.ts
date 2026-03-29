@@ -86,9 +86,11 @@ Return this exact JSON structure (add profileFit only if instructed above):
 
   try {
     let rawText = "";
+    let modelUsed = GEMINI_MODEL_CHAIN[0];
     for (let i = 0; i < GEMINI_MODEL_CHAIN.length; i++) {
+      modelUsed = GEMINI_MODEL_CHAIN[i];
       try {
-        const model  = genAI.getGenerativeModel({ model: GEMINI_MODEL_CHAIN[i] });
+        const model  = genAI.getGenerativeModel({ model: modelUsed });
         const result = await model.generateContent(prompt);
         rawText = result.response.text().trim();
         break;
@@ -108,7 +110,7 @@ Return this exact JSON structure (add profileFit only if instructed above):
       analysis.lang = lang as "es" | "en";
     }
 
-    return NextResponse.json(analysis);
+    return NextResponse.json({ ...analysis, modelUsed });
   } catch (err: unknown) {
     console.error("analyze-jd error:", err);
     const status = (err as { status?: number })?.status;
