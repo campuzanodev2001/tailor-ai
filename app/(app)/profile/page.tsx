@@ -352,7 +352,7 @@ export default function ProfilePage() {
           {/* Profile Header */}
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-16">
             <div className="flex items-center gap-6">
-              <div className="relative w-24 h-24 rounded-full overflow-hidden bg-surface-container-high ring-2 ring-primary/20">
+              <div className="relative w-24 h-24 shrink-0 rounded-full overflow-hidden bg-surface-container-high ring-2 ring-primary/20">
                 {draft?.photoURL ? (
                   <Image src={draft.photoURL} alt={draft.name ?? "Avatar"} fill className="object-cover" />
                 ) : (
