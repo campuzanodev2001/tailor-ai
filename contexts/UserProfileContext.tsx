@@ -11,8 +11,6 @@ import {
   doc,
   onSnapshot,
   setDoc,
-  serverTimestamp,
-  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "./AuthContext";
@@ -42,26 +40,16 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onSnapshot(ref, async (snap) => {
       if (snap.exists()) {
         setProfile({ uid: user.uid, ...snap.data() } as UserProfile);
+        setLoading(false);
       } else {
-        // Create default profile for new users
-        const defaultProfile: Omit<UserProfile, "uid"> = {
-          name:            user.displayName ?? "",
-          email:           user.email ?? "",
-          phone:           "",
-          photoURL:        user.photoURL ?? "",
-          hardSkills:      [],
-          softSkills:      [],
-          languages:       [],
-          experience:      [],
-          education:       [],
-          certifications:  [],
-          cvCredits:       5,
-          plan:            "free",
-          createdAt:       serverTimestamp() as Timestamp,
-        };
-        await setDoc(ref, defaultProfile);
+        // Profile doesn't exist yet — init server-side (prevents client-side credit tampering)
+        const idToken = await user.getIdToken();
+        await fetch("/api/user/init", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        // onSnapshot will fire again once the server writes the doc
       }
-      setLoading(false);
     });
 
     return unsubscribe;

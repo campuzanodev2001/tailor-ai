@@ -60,6 +60,42 @@ describe("calculateATSScore", () => {
     expect(matched).toHaveLength(1);
   });
 
+  it("niceToHave keywords do not penalise the score when missing", () => {
+    // 100% core coverage → score 99 regardless of niceToHave coverage
+    const cv = { ...baseCv, description: "react typescript developer" };
+    const jd = {
+      ...baseJd,
+      atsKeywords: ["react", "typescript"],
+      niceToHave: ["graphql", "jest", "storybook", "cypress", "turborepo"],
+    };
+    const { score } = calculateATSScore(cv, jd);
+    expect(score).toBe(99);
+  });
+
+  it("niceToHave matched keywords appear in matched list", () => {
+    const cv = { ...baseCv, description: "react developer who uses graphql" };
+    const jd = {
+      ...baseJd,
+      atsKeywords: ["react"],
+      niceToHave: ["graphql"],
+    };
+    const { matched, missing } = calculateATSScore(cv, jd);
+    expect(matched).toContain("react");
+    expect(matched).toContain("graphql");
+    expect(missing).toHaveLength(0);
+  });
+
+  it("niceToHave missing keywords appear in missing list", () => {
+    const cv = { ...baseCv, description: "react developer" };
+    const jd = {
+      ...baseJd,
+      atsKeywords: ["react"],
+      niceToHave: ["graphql"],
+    };
+    const { missing } = calculateATSScore(cv, jd);
+    expect(missing).toContain("graphql");
+  });
+
   it("searches across all CV sections (bullets, skills, education)", () => {
     const cv: CVData = {
       ...baseCv,

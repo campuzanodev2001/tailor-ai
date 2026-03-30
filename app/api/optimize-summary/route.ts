@@ -2,13 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { adminAuth } from "@/lib/firebaseAdmin";
 import { GEMINI_MODEL } from "@/lib/ai";
+import { checkRateLimit } from "@/lib/rateLimit";
+
+export const maxDuration = 60;
+
+const MAX_CONTEXT_LENGTH = 4_000;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(req: NextRequest) {
   const token = (req.headers.get("authorization") ?? "").replace("Bearer ", "");
+  let uid: string;
   try {
-    await adminAuth.verifyIdToken(token);
+    const decoded = await adminAuth.verifyIdToken(token);
+    uid = decoded.uid;
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -16,6 +23,14 @@ export async function POST(req: NextRequest) {
   const { context } = await req.json();
   if (!context) {
     return NextResponse.json({ error: "No context provided" }, { status: 400 });
+  }
+  if (context.length > MAX_CONTEXT_LENGTH) {
+    return NextResponse.json({ error: "context too long" }, { status: 400 });
+  }
+
+  const allowed = await checkRateLimit(uid, "os");
+  if (!allowed) {
+    return NextResponse.json({ error: "Daily limit reached. Try again tomorrow." }, { status: 429 });
   }
 
   const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });

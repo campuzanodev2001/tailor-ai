@@ -41,20 +41,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, []);
 
+  async function createSession(user: User) {
+    const idToken = await user.getIdToken();
+    await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+  }
+
+  async function clearSession() {
+    await fetch("/api/auth/session", { method: "DELETE" });
+  }
+
   async function signInWithGoogle() {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    const result = await signInWithPopup(auth, provider);
+    await createSession(result.user);
   }
 
   async function signInWithEmail(email: string, password: string) {
-    await signInWithEmailAndPassword(auth, email, password);
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    await createSession(result.user);
   }
 
   async function signUpWithEmail(email: string, password: string) {
-    await createUserWithEmailAndPassword(auth, email, password);
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    await createSession(result.user);
   }
 
   async function signOut() {
+    await clearSession();
     await firebaseSignOut(auth);
   }
 

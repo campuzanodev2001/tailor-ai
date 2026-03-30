@@ -177,8 +177,6 @@ export default function GeneratePage() {
     }
   }
 
-  const activeModel = modelUsed ?? analyzeModelUsed;
-
   function formatModelName(model: string) {
     return model
       .replace(/^gemini-/, "Gemini ")
@@ -221,21 +219,21 @@ export default function GeneratePage() {
             <h2 className="text-2xl sm:text-3xl font-headline font-extrabold tracking-tight text-white">
               Tailor Content
             </h2>
-            {(analyzing || generating) ? (
+            {analyzing ? (
               <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high border border-outline-variant/20 text-[10px] font-bold text-outline animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
                 thinking...
               </span>
-            ) : activeModel ? (
+            ) : analyzeModelUsed ? (
               <div className="relative group/model">
                 <span
-                  key={activeModel}
+                  key={analyzeModelUsed}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high border border-outline-variant/20 text-[10px] font-bold text-primary cursor-default select-none animate-in fade-in duration-300"
                 >
                   <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>
                     auto_awesome
                   </span>
-                  {formatModelName(activeModel)}
+                  {formatModelName(analyzeModelUsed)}
                 </span>
                 <div className="absolute left-0 top-full mt-1.5 z-50 w-64 hidden group-hover/model:block">
                   <div className="bg-surface-container-highest border border-outline-variant/20 rounded-xl p-3 shadow-xl text-xs text-on-surface-variant leading-relaxed">
@@ -547,11 +545,11 @@ export default function GeneratePage() {
                 <p className="text-center text-xs text-outline mt-2">
                   {credits} credit{credits !== 1 ? "s" : ""} remaining
                 </p>
-                {modelUsed && modelUsed !== "gemini-3.1-pro-preview" && (
+                {analyzeModelUsed && analyzeModelUsed !== "gemini-3.1-pro-preview" && (
                   <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-secondary/10 border border-secondary/20 rounded-lg">
                     <span className="material-symbols-outlined text-secondary text-base shrink-0">swap_horiz</span>
                     <p className="text-[11px] text-secondary leading-snug">
-                      Using <span className="font-bold">{formatModelName(modelUsed)}</span> — best available model right now.
+                      Using <span className="font-bold">{formatModelName(analyzeModelUsed)}</span> — best available model right now.
                     </p>
                   </div>
                 )}

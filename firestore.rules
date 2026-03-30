@@ -1,0 +1,24 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // Usuarios pueden actualizar su propio perfil, pero NO los campos protegidos
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['cvCredits', 'plan', 'unlimited', 'rl',
+                     'stripeCustomerId', 'createdAt', 'lastCvAt']);
+
+      // Creación y borrado solo desde el servidor (Admin SDK bypasea estas rules)
+      allow create, delete: if false;
+
+      match /cvHistory/{cvId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        // Solo el servidor escribe historial (Admin SDK)
+        allow write: if false;
+      }
+    }
+  }
+}

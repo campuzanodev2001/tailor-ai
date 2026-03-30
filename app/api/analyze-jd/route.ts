@@ -3,6 +3,9 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { JDAnalysis } from "@/types";
 import { GEMINI_MODEL_CHAIN } from "@/lib/ai";
+export const maxDuration = 60;
+
+const MAX_JD_LENGTH = 15_000;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -21,6 +24,9 @@ export async function POST(req: NextRequest) {
   const { jobDescription, lang = "auto" } = await req.json();
   if (!jobDescription?.trim()) {
     return NextResponse.json({ error: "jobDescription is required" }, { status: 400 });
+  }
+  if (jobDescription.length > MAX_JD_LENGTH) {
+    return NextResponse.json({ error: "jobDescription too long" }, { status: 400 });
   }
 
   // Fetch user profile for fit analysis (best-effort — don't fail if missing)
@@ -95,7 +101,7 @@ Return this exact JSON structure (add profileFit only if instructed above):
         rawText = result.response.text().trim();
         break;
       } catch (err: unknown) {
-        if ((err as { status?: number })?.status === 429 && i < GEMINI_MODEL_CHAIN.length - 1) continue;
+        if (((err as { status?: number })?.status === 429 || (err as { status?: number })?.status === 503) && i < GEMINI_MODEL_CHAIN.length - 1) continue;
         throw err;
       }
     }

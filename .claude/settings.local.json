@@ -15,7 +15,9 @@
       "WebFetch(domain:discuss.ai.google.dev)",
       "WebFetch(domain:aistudio.google.com)",
       "WebFetch(domain:www.aifreeapi.com)",
-      "Skill(claude-api)"
+      "Skill(claude-api)",
+      "Bash(ls /d/dev/landing-andy/tailor-ai/app/\\\\\\(app\\\\\\)/profile/)",
+      "Bash(grep -rn \"STRIPE_STARTER_PRICE_ID\\\\|STRIPE_PRO_PRICE_ID\" . --include=*.ts --include=*.tsx --include=*.env*)"
     ]
   }
 }

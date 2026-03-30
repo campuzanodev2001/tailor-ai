@@ -2,16 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { adminAuth } from "@/lib/firebaseAdmin";
 import { GEMINI_MODEL } from "@/lib/ai";
+import { checkRateLimit } from "@/lib/rateLimit";
+
+export const maxDuration = 60;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(req: NextRequest) {
   // Auth
   const token = (req.headers.get("authorization") ?? "").replace("Bearer ", "");
+  let uid: string;
   try {
-    await adminAuth.verifyIdToken(token);
+    const decoded = await adminAuth.verifyIdToken(token);
+    uid = decoded.uid;
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const allowed = await checkRateLimit(uid, "pc");
+  if (!allowed) {
+    return NextResponse.json({ error: "Daily limit reached. Try again tomorrow." }, { status: 429 });
   }
 
   const formData = await req.formData();

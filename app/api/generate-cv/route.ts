@@ -7,6 +7,11 @@ import { nanoid } from "nanoid";
 import { CVData, JDAnalysis } from "@/types";
 import { calculateATSScore } from "@/utils/atsScore";
 
+export const maxDuration = 60;
+
+const MAX_JD_LENGTH    = 15_000;
+const MAX_ATS_KEYWORDS = 30;
+
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(req: NextRequest) {
@@ -28,10 +33,24 @@ export async function POST(req: NextRequest) {
   if (!jobDescription || !jdAnalysis) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
+  if (typeof jobDescription !== "string" || jobDescription.length > MAX_JD_LENGTH) {
+    return NextResponse.json({ error: "jobDescription too long" }, { status: 400 });
+  }
+
+  // Cap jdAnalysis arrays to prevent prompt inflation
+  if (Array.isArray(jdAnalysis.atsKeywords)) {
+    jdAnalysis.atsKeywords = jdAnalysis.atsKeywords.slice(0, MAX_ATS_KEYWORDS);
+  }
+  if (Array.isArray(jdAnalysis.requiredSkills)) {
+    jdAnalysis.requiredSkills = jdAnalysis.requiredSkills.slice(0, 20);
+  }
+  if (Array.isArray(jdAnalysis.niceToHave)) {
+    jdAnalysis.niceToHave = jdAnalysis.niceToHave.slice(0, 10);
+  }
 
   // Check + decrement quota in transaction
   const userRef = adminDb.collection("users").doc(uid);
-  let profile: FirebaseFirestore.DocumentData;
+  let profile: FirebaseFirestore.DocumentData = {};
 
   try {
     await adminDb.runTransaction(async (tx) => {
@@ -144,7 +163,7 @@ Rules:
         break;
       } catch (err: unknown) {
         const status = (err as { status?: number })?.status;
-        if (status === 429 && i < GEMINI_MODEL_CHAIN.length - 1) continue;
+        if ((status === 429 || status === 503) && i < GEMINI_MODEL_CHAIN.length - 1) continue;
         throw err;
       }
     }
