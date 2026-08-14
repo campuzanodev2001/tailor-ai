@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { JDAnalysis } from "@/types";
 import { GEMINI_MODEL_CHAIN } from "@/lib/ai";
+import { sanitizeSkillList } from "@/utils/sanitizeSkills";
 export const maxDuration = 60;
 
 const MAX_JD_LENGTH = 15_000;
@@ -35,15 +36,44 @@ export async function POST(req: NextRequest) {
     const snap = await adminDb.collection("users").doc(uid).get();
     const p    = snap.data();
     if (p) {
+      // Every tech the candidate has actually used, from skills + all roles + projects.
+      // Without the full set the model reports skills as "missing" that the profile has.
+      const techFromExperience = (p.experience ?? []).flatMap(
+        (e: { techStack?: string[] }) => e.techStack ?? [],
+      );
+      const techFromProjects = (p.projects ?? []).flatMap(
+        (pr: { tech?: string[] }) => pr.tech ?? [],
+      );
+      const skills = Array.from(
+        new Map(
+          [
+            ...(p.hardSkills ?? []),
+            ...(p.softSkills ?? []),
+            ...techFromExperience,
+            ...techFromProjects,
+          ]
+            .filter((s: unknown): s is string => typeof s === "string" && s.trim().length > 0)
+            .map((s: string) => [s.trim().toLowerCase(), s.trim()] as const),
+        ).values(),
+      );
+
       profileSnippet = JSON.stringify({
-        skills:          [...(p.hardSkills ?? []), ...(p.softSkills ?? [])],
-        currentRole:     p.title ?? null,
-        experience:      (p.experience ?? []).map((e: { startDate?: string; endDate?: string }) => ({
-          startDate: e.startDate ?? null,
-          endDate:   e.endDate   ?? null,
-        })),
-        recentTechStack: (p.experience?.[0]?.techStack ?? []).slice(0, 8),
-        today:           new Date().toISOString().split("T")[0],
+        skills,
+        currentRole: p.title ?? null,
+        // Location matters: without it the model infers the candidate's country
+        // from unrelated fields and flags relocation as a missing skill.
+        location:    p.location ?? null,
+        languages:   (p.languages ?? []).map(
+          (l: { name?: string; level?: string }) => `${l.name} (${l.level})`,
+        ),
+        experience:  (p.experience ?? []).map(
+          (e: { role?: string; startDate?: string; endDate?: string }) => ({
+            role:      e.role      ?? null,
+            startDate: e.startDate ?? null,
+            endDate:   e.endDate   ?? null,
+          }),
+        ),
+        today: new Date().toISOString().split("T")[0],
       });
     }
   } catch { /* ignore */ }
@@ -64,7 +94,28 @@ Calculate total years of professional experience from the experience[].startDate
     "matchedSkills": ["skills the candidate has that the job requires"],
     "missingSkills": ["required skills the candidate lacks"]
   }
-}`
+}
+
+Rules for matchedSkills and missingSkills — these are shown to the user as
+one-click chips that get saved into their profile, so they must be clean:
+- Each entry is a SHORT canonical skill name: a technology, tool, language,
+  framework or methodology. At most 4 words. "Angular", "Kubernetes",
+  "GraphQL", "Ruby on Rails", "Agile" are correct.
+- NEVER emit a sentence, a requirement phrase, a parenthetical explanation, or
+  any commentary. "Experience with React (not confirmed in profile)" is wrong;
+  "React" is correct.
+- NEVER emit non-skills as skills. The following belong in "summary", never in
+  these arrays: geographic location, relocation or on-site availability, visa
+  or work-permit status, years of experience, seniority level, spoken-language
+  requirements, salary, contract type, degrees, or certifications the job asks
+  for.
+- Judge location, seniority and language fit in "summary" only, using the
+  candidate's location and languages fields. Do not treat the candidate's
+  location as a deficiency when it already satisfies the job.
+- A skill counts as matched if it appears anywhere in the candidate's skills
+  list, including equivalent naming ("NextJS" matches "Next.js", "Postgres"
+  matches "PostgreSQL"). Do not report a skill as missing when a variant of the
+  same technology is present.`
     : `Do NOT include a "profileFit" key.`;
 
   const langInstruction = lang === "auto"
@@ -115,6 +166,23 @@ Return this exact JSON structure (add profileFit only if instructed above):
     const end   = rawText.lastIndexOf("}");
     if (start === -1 || end === -1) throw new Error("No JSON object in response");
     const analysis: JDAnalysis = JSON.parse(rawText.slice(start, end + 1));
+
+    if (!analysis.role || typeof analysis.role !== "string") {
+      throw new Error("Analysis missing required field: role");
+    }
+    for (const key of ["requiredSkills", "niceToHave", "atsKeywords"] as const) {
+      analysis[key] = sanitizeSkillList(analysis[key]);
+    }
+    if (analysis.profileFit) {
+      const fit = analysis.profileFit;
+      fit.matchedSkills = sanitizeSkillList(fit.matchedSkills);
+      fit.missingSkills = sanitizeSkillList(fit.missingSkills);
+      // A skill the profile already covers must never surface as missing —
+      // the chip would write a duplicate back into the profile.
+      const matched     = new Set(fit.matchedSkills.map((s) => s.toLowerCase()));
+      fit.missingSkills = fit.missingSkills.filter((s) => !matched.has(s.toLowerCase()));
+      fit.score         = Math.max(0, Math.min(100, Math.round(Number(fit.score) || 0)));
+    }
 
     const rawLang = String(analysis.lang ?? "").toLowerCase().trim();
     analysis.lang = (rawLang === "es" || rawLang.startsWith("es") || rawLang === "spanish" || rawLang === "español")

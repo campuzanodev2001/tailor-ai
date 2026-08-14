@@ -144,7 +144,9 @@ ${cvData.additional_info?.languages ? `
       },
     });
   } catch {
-    // Puppeteer not available — signal client to use its own PDF generator
-    return NextResponse.json({ error: "server-pdf-unavailable" }, { status: 501 });
+    // Puppeteer not available — signal client to use its own PDF generator.
+    // The rendered HTML rides along so any caller that can print it (a browser,
+    // a headless Chrome) gets the exact server layout instead of re-deriving it.
+    return NextResponse.json({ error: "server-pdf-unavailable", html }, { status: 501 });
   }
 }

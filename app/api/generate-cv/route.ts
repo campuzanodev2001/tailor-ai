@@ -6,6 +6,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { nanoid } from "nanoid";
 import { CVData, JDAnalysis } from "@/types";
 import { calculateATSScore } from "@/utils/atsScore";
+import { validateCVData } from "@/utils/validateCV";
 
 export const maxDuration = 60;
 
@@ -150,10 +151,29 @@ Rules:
 - Tailor all content to match the job's ATS keywords: ${jdAnalysis.atsKeywords.join(", ")}
 - Write in ${jdAnalysis.lang === "es" ? "Spanish" : "English"}
 - Use strong action verbs and quantifiable achievements
-- Keep bullet points concise and impactful
+- Keep bullet points concise and impactful: 3-6 bullets per role, most job-relevant first
 - Only include projects from the candidate profile; if there are none, return "projects": []
-- Use linkedin and portfolio exactly as provided in the candidate profile; do not invent or modify them
 - Calculate total years of professional experience from the experience[].startDate and experience[].endDate fields using today's date for any "Present" entries; use that figure when writing the description
+
+NEVER INVENT. This CV is submitted to real employers under the candidate's name;
+an invented detail is a lie told on their behalf. Every fact must already exist
+in the candidate profile above.
+- Reproduce these EXACTLY as given, character for character: name, email, phone,
+  location, linkedin, portfolio, company names, job titles, start and end dates,
+  institution names, degrees. Never reword, translate, correct or complete them.
+  If a field is absent from the profile, omit it — never fill the gap.
+- Rewrite bullets only from achievements the profile already states. You may
+  rephrase, merge, reorder, and shift emphasis toward the job. You may not add
+  an achievement, a responsibility, a team size, a metric, a percentage, a
+  client or a technology that is not there.
+- Never state or imply a skill, tool or framework the candidate's profile does
+  not list, even when the job asks for it. Missing requirements stay missing.
+- Never invent employers, roles, dates, certifications or degrees, and never
+  stretch dates to close an employment gap.
+- Every number in the output must appear in the profile. If the profile has no
+  metric for an achievement, write it without one.
+- "additional_info.skills" may only contain skills present in the profile,
+  ordered by relevance to the job.
 `;
 
   try {
@@ -178,6 +198,31 @@ Rules:
     const end   = rawText.lastIndexOf("}");
     if (start === -1 || end === -1) throw new Error("No JSON object in response");
     const cvData: CVData = JSON.parse(rawText.slice(start, end + 1));
+
+    // Never persist or return a CV that invented facts about the candidate.
+    const issues = validateCVData(cvData, {
+      email:     profile.email,
+      phone:     profile.phone,
+      linkedin:  profile.linkedin,
+      portfolio: profile.portfolio,
+      companies: (profile.experience ?? []).map(
+        (e: { company?: string }) => e.company ?? "",
+      ).filter(Boolean),
+    });
+    if (issues.length > 0) {
+      console.error("generate-cv validation failed:", issues);
+      // The credit was taken before generation — give it back.
+      if (!profile.unlimited) {
+        await userRef.update({ cvCredits: FieldValue.increment(1) });
+      }
+      return NextResponse.json(
+        {
+          error: "Generated CV failed validation and was discarded. Your credit was not consumed.",
+          issues,
+        },
+        { status: 502 },
+      );
+    }
 
     // Calculate ATS score
     const { score, matched, missing } = calculateATSScore(cvData, jdAnalysis);
